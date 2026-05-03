@@ -1,0 +1,45 @@
+{
+  "name": "fmae-tms-backend",
+  "version": "1.0.0",
+  "description": "FMAE-TMS Backend — Formula/Motorsport Activity Event Team Management System",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "nodemon src/index.js",
+    "start": "node src/index.js",
+    "migrate": "node migrations/runMigrations.js",
+    "seed": "node migrations/seedData.js",
+    "setup": "npm run migrate && npm run seed",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "csurf": "^1.11.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-async-errors": "^3.1.1",
+    "express-rate-limit": "^7.1.5",
+    "express-validator": "^7.0.0",
+    "firebase-admin": "^12.0.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.9.7",
+    "pdfkit": "^0.18.0",
+    "pg": "^8.11.3",
+    "razorpay": "^2.9.6",
+    "socket.io": "^4.7.2",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "uuid": "^9.0.1",
+    "winston": "^3.11.0",
+    "xss": "^1.0.15"
+  },
+  "devDependencies": {
+    "eslint": "^8.54.0",
+    "nodemon": "^3.0.2"
+  }
+}
