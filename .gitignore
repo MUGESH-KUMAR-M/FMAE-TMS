@@ -12,3 +12,5 @@ build/
 *.swo
 logs/
 uploads/
+*-firebase-adminsdk-*.json
+firebase-service-account.json
