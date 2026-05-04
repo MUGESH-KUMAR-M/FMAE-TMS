@@ -266,7 +266,7 @@ const approveRegistration = async (req, res) => {
   // Create or link team user account
   const existingUserResult = await pool.query(`SELECT id FROM users WHERE email = $1`, [reg.team_email]);
   let userId;
-  const tempPassword = '123';
+  const tempPassword = 'passwordfmae123';
   const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
   if (existingUserResult.rows.length > 0) {
@@ -278,7 +278,7 @@ const approveRegistration = async (req, res) => {
        WHERE id = $4`,
       [reg.team_name, reg.competition_id, hashedPassword, userId]
     );
-    logger.info(`Existing user [${reg.team_email}] updated and linked to registration. Password reset to '123'.`);
+    logger.info(`Existing user [${reg.team_email}] updated and linked to registration. Password reset to '${tempPassword}'.`);
   } else {
     // Create new team user with password '123'
     const userResult = await pool.query(
@@ -287,7 +287,7 @@ const approveRegistration = async (req, res) => {
       [reg.team_name, reg.team_email, hashedPassword, reg.competition_id, req.user.id]
     );
     userId = userResult.rows[0].id;
-    logger.info(`New team user created for registration: ${reg.team_email} [User ID: ${userId}] with password '123'`);
+    logger.info(`New team user created for registration: ${reg.team_email} [User ID: ${userId}] with password '${tempPassword}'`);
   }
 
   // Create payment record
