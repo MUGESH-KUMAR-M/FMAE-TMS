@@ -29,7 +29,7 @@ function htmlWrap(content) {
     <body style="background:#000; margin:0; padding:20px;">
     <div style="${baseStyle} overflow:hidden;">
       <div style="width:100%; height:150px; background:#111; overflow:hidden;">
-        <img src="https://fmae.in/wp-content/uploads/2021/08/FMAE-Logo-New.png" 
+        <img src="https://raw.githubusercontent.com/MUGESH-KUMAR-M/FMAE-TMS/main/backend/uploads/fmae_email_banner.png" 
              alt="FMAE Header" style="width:100%; height:100%; object-fit:cover; opacity:0.8;">
       </div>
       <div style="padding:40px;">
