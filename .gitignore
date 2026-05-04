@@ -11,6 +11,7 @@ build/
 *.swp
 *.swo
 logs/
-uploads/
+backend/uploads/
+!backend/uploads/fmae_email_banner.png
 *-firebase-adminsdk-*.json
 firebase-service-account.json
