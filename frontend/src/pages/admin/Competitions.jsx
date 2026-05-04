@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { competitionAPI } from '../../services/api';
+import { useAuthStore } from '../../context/store';
 
 const INDIAN_STATES = ['Andhra Pradesh','Arunachal Pradesh','Assam','Bihar','Chhattisgarh','Goa','Gujarat','Haryana','Himachal Pradesh','Jharkhand','Karnataka','Kerala','Madhya Pradesh','Maharashtra','Manipur','Meghalaya','Mizoram','Nagaland','Odisha','Punjab','Rajasthan','Sikkim','Tamil Nadu','Telangana','Tripura','Uttar Pradesh','Uttarakhand','West Bengal','Delhi','Chandigarh','Puducherry','Other'];
 
@@ -95,13 +96,14 @@ function CompModal({ comp, onClose, onSaved }) {
 }
 
 export default function AdminCompetitions() {
+  const { user } = useAuthStore();
   const [competitions, setCompetitions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(null);
 
   const load = () => {
     setLoading(true);
-    competitionAPI.getAll().then(r => setCompetitions(r.data.competitions || [])).finally(() => setLoading(false));
+    competitionAPI.getAllAdmin().then(r => setCompetitions(r.data.competitions || [])).finally(() => setLoading(false));
   };
   const del = async (id) => {
     if (!window.confirm('Are you sure you want to delete this competition? This will remove all associated tasks and registrations.')) return;
@@ -128,8 +130,10 @@ export default function AdminCompetitions() {
         }}
       />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800 }}>Competitions</h1>
-        <button className="btn btn-primary" onClick={() => setModal({})}>+ Create Competition</button>
+        <h1 style={{ fontSize: 24, fontWeight: 800 }}>Event Settings</h1>
+        {user?.role === 'SUPER_ADMIN' && (
+          <button className="btn btn-primary" onClick={() => setModal({})}>+ Create Competition</button>
+        )}
       </div>
       {loading ? <div className="loading-page"><div className="spinner" /></div> : (
         <div className="table-wrap">
@@ -145,8 +149,16 @@ export default function AdminCompetitions() {
                   <td style={{ fontSize: 12, color: 'rgba(0,0,0,0.4)' }}>{c.deadlines?.length || 0} deadlines</td>
                   <td>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => setModal({ ...c, deadlines: c.deadlines || [] })}>Edit</button>
-                      <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => del(c.id)}>Delete</button>
+                      {(user?.role === 'SUPER_ADMIN' || Number(c.id) === Number(user?.competition_id)) ? (
+                        <>
+                          <button className="btn btn-ghost btn-sm" onClick={() => setModal({ ...c, deadlines: c.deadlines || [] })}>Edit</button>
+                          {user?.role === 'SUPER_ADMIN' && (
+                            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => del(c.id)}>Delete</button>
+                          )}
+                        </>
+                      ) : (
+                        <span style={{ fontSize: 11, color: 'rgba(0,0,0,0.3)', fontStyle: 'italic' }}>View Only</span>
+                      )}
                     </div>
                   </td>
                 </tr>

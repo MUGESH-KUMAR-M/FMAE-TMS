@@ -10,7 +10,13 @@ const getAllPayments = async (req, res) => {
   let params = [];
   let idx = 1;
 
-  if (competition_id) { conditions.push(`r.competition_id = $${idx++}`); params.push(competition_id); }
+  if (req.user.role !== 'SUPER_ADMIN' && req.user.competition_id) {
+    conditions.push(`r.competition_id = $${idx++}`);
+    params.push(req.user.competition_id);
+  } else if (competition_id) {
+    conditions.push(`r.competition_id = $${idx++}`);
+    params.push(competition_id);
+  }
   if (status) { conditions.push(`ps.status = $${idx++}`); params.push(status); }
 
   const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -52,27 +58,56 @@ const getAllPayments = async (req, res) => {
 };
 
 // PUT /api/payments/:id — Finance Admin: Update payment status
-// Gap Fix: 3 states — PAID | UNPAID | PENDING
+// This now handles both existing payment record IDs and registration IDs (fallback)
 const updatePayment = async (req, res) => {
-  const { status, notes } = req.body;
+  const { status, notes, registration_id } = req.body;
+  const targetId = req.params.id;
+
   if (!['PAID', 'UNPAID', 'PENDING'].includes(status))
     return res.status(400).json({ success: false, message: 'Status must be PAID, UNPAID, or PENDING' });
 
-  const existing = await pool.query(`SELECT * FROM payment_status WHERE id = $1`, [req.params.id]);
-  if (!existing.rows[0]) return res.status(404).json({ success: false, message: 'Payment record not found' });
-
-  const result = await pool.query(
-    `UPDATE payment_status SET status=$1, notes=$2, marked_by=$3, marked_at=NOW(), updated_at=NOW()
-     WHERE id=$4 RETURNING *`,
-    [status, notes, req.user.id, req.params.id]
+  let existing;
+  const existingResult = await pool.query(
+    `SELECT ps.*, r.competition_id, r.team_user_id, r.id as reg_id 
+     FROM registrations r
+     LEFT JOIN payment_status ps ON ps.registration_id = r.id
+     WHERE ps.id = $1 OR r.id = $2`, 
+    [isNaN(targetId) ? null : targetId, registration_id || null]
   );
+  
+  existing = existingResult.rows[0];
+  if (!existing) return res.status(404).json({ success: false, message: 'Registration or Payment record not found' });
 
-  if (status === 'PAID' && existing.rows[0].status !== 'PAID') {
+  // Scoping check for Admins
+  if (req.user.role !== 'SUPER_ADMIN' && req.user.competition_id && existing.competition_id !== req.user.competition_id) {
+    return res.status(403).json({ success: false, message: 'Forbidden: You do not have access to this payment record' });
+  }
+
+  let result;
+  if (existing.id) {
+    // Update existing
+    result = await pool.query(
+      `UPDATE payment_status SET status=$1, notes=$2, marked_by=$3, marked_at=NOW(), updated_at=NOW()
+       WHERE id=$4 RETURNING *`,
+      [status, notes, req.user.id, existing.id]
+    );
+  } else {
+    // Create new
+    result = await pool.query(
+      `INSERT INTO payment_status (registration_id, team_id, status, notes, marked_by, marked_at)
+       VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *`,
+      [existing.reg_id, existing.team_user_id, status, notes, req.user.id]
+    );
+  }
+
+  const updatedPayment = result.rows[0];
+
+  if (status === 'PAID' && (!existing.status || existing.status !== 'PAID')) {
     const regResult = await pool.query(
       `SELECT r.team_name, r.team_email, r.team_user_id, c.name as competition_name
        FROM registrations r JOIN competitions c ON c.id = r.competition_id
        WHERE r.id = $1`,
-      [existing.rows[0].registration_id]
+      [existing.reg_id]
     );
     if (regResult.rows[0]) {
       const reg = regResult.rows[0];
@@ -90,8 +125,8 @@ const updatePayment = async (req, res) => {
     }
   }
 
-  logger.info(`Payment updated: ${existing.rows[0].id} -> ${status} by ${req.user.email}`);
-  res.json({ success: true, payment: result.rows[0] });
+  logger.info(`Payment updated for reg ${existing.reg_id}: -> ${status} by ${req.user.email}`);
+  res.json({ success: true, payment: updatedPayment });
 };
 
 // GET /api/payments/summary — Finance Admin: Dashboard summary stats
@@ -99,7 +134,13 @@ const getPaymentSummary = async (req, res) => {
   const { competition_id } = req.query;
   let condition = `r.status = 'APPROVED'`;
   let params = [];
-  if (competition_id) { condition += ` AND r.competition_id = $1`; params.push(competition_id); }
+  if (req.user.role !== 'SUPER_ADMIN' && req.user.competition_id) {
+    condition += ` AND r.competition_id = $1`;
+    params.push(req.user.competition_id);
+  } else if (competition_id) {
+    condition += ` AND r.competition_id = $1`;
+    params.push(competition_id);
+  }
 
   const result = await pool.query(
     `SELECT
@@ -120,7 +161,13 @@ const exportPaymentsCSV = async (req, res) => {
   const { competition_id } = req.query;
   let condition = `r.status = 'APPROVED'`;
   let params = [];
-  if (competition_id) { condition += ` AND r.competition_id = $1`; params.push(competition_id); }
+  if (req.user.role !== 'SUPER_ADMIN' && req.user.competition_id) {
+    condition += ` AND r.competition_id = $1`;
+    params.push(req.user.competition_id);
+  } else if (competition_id) {
+    condition += ` AND r.competition_id = $1`;
+    params.push(competition_id);
+  }
 
   const result = await pool.query(
     `SELECT r.team_name, r.college_name, r.team_email, r.vehicle_class,
@@ -140,10 +187,17 @@ const exportPaymentsCSV = async (req, res) => {
   ].join(',');
 
   const csvRows = result.rows.map(r => [
-    `"${r.team_name}"`, `"${r.college_name}"`, r.team_email,
-    `"${r.competition}"`, r.vehicle_class, r.payment_status || 'PENDING',
-    `"${r.billing_name || ''}"`, r.billing_gst || '', r.billing_city || '',
-    r.billing_state || '', r.billing_pin || '',
+    `"${(r.team_name || '').replace(/"/g, '""')}"`,
+    `"${(r.college_name || '').replace(/"/g, '""')}"`,
+    r.team_email,
+    `"${(r.competition || '').replace(/"/g, '""')}"`,
+    r.vehicle_class,
+    r.payment_status || 'PENDING',
+    `"${(r.billing_name || '').replace(/"/g, '""')}"`,
+    `"${(r.billing_gst || '')}"`,
+    `"${(r.billing_city || '')}"`,
+    `"${(r.billing_state || '')}"`,
+    r.billing_pin || '',
     r.submitted_at ? new Date(r.submitted_at).toLocaleDateString('en-IN') : '',
     r.marked_at ? new Date(r.marked_at).toLocaleDateString('en-IN') : '',
   ].join(','));

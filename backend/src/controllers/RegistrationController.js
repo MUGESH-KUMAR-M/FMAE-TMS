@@ -1,6 +1,7 @@
 const pool = require('../config/database');
 const {
   sendRegistrationSubmittedToAdmin,
+  sendRegistrationConfirmationToTeam,
   sendRegistrationApproved,
   sendRegistrationRejected,
 } = require('../utils/emailService');
@@ -111,23 +112,41 @@ const submitRegistration = async (req, res) => {
   const registration = result.rows[0];
 
   // Notify competition admin
-  const admins = await pool.query(
-    `SELECT email FROM users WHERE role = 'ADMIN_COMPETITION' AND (competition_id = $1 OR competition_id IS NULL)`,
+  const adminsToNotify = await pool.query(
+    `SELECT id, email FROM users 
+     WHERE role = 'SUPER_ADMIN' 
+     OR (role = 'ADMIN_COMPETITION' AND (competition_id = $1 OR competition_id IS NULL))`,
     [competition_id]
   );
-  const superAdmins = await pool.query(`SELECT email FROM users WHERE role = 'SUPER_ADMIN'`);
-  const adminEmails = [...admins.rows, ...superAdmins.rows].map(r => r.email);
+  
+  const io = req.app.get('io');
 
-  for (const adminEmail of adminEmails) {
-    await sendRegistrationSubmittedToAdmin(adminEmail, {
+  for (const admin of adminsToNotify.rows) {
+    // Send Email
+    await sendRegistrationSubmittedToAdmin(admin.email, {
       ...registration,
       competition_name: comp.rows[0].name,
       id: registration.id,
     });
+
+    // In-Portal Notification
+    await NotificationController.createNotification(io, {
+      user_id: admin.id,
+      title: 'New Team Registration',
+      message: `Team "${team_name}" has registered for ${comp.rows[0].name}.`,
+      type: 'INFO',
+      link: `/admin/registrations/${registration.id}`
+    });
   }
 
+  // Send Confirmation Email to Team
+  await sendRegistrationConfirmationToTeam(team_email, {
+    ...registration,
+    competition_name: comp.rows[0].name,
+  });
+
   logger.info(`New registration: ${team_name} for ${comp.rows[0].name}`);
-  res.status(201).json({ success: true, message: 'Registration submitted successfully', registration_id: registration.id });
+  res.status(201).json({ success: true, message: 'Registration submitted successfully. Admins have been notified.', registration_id: registration.id });
 };
 
 // GET /api/registrations — Admin: Get all registrations (with filters)
@@ -187,8 +206,15 @@ const getRegistration = async (req, res) => {
      WHERE r.id = $1`,
     [req.params.id]
   );
-  if (!result.rows[0]) return res.status(404).json({ success: false, message: 'Registration not found' });
-  res.json({ success: true, registration: result.rows[0] });
+  const reg = result.rows[0];
+  if (!reg) return res.status(404).json({ success: false, message: 'Registration not found' });
+
+  // Scoping check for Competition Admins
+  if (req.user.role === 'ADMIN_COMPETITION' && req.user.competition_id && reg.competition_id !== req.user.competition_id) {
+    return res.status(403).json({ success: false, message: 'Forbidden: You do not have access to this registration' });
+  }
+
+  res.json({ success: true, registration: reg });
 };
 
 // GET /api/registrations/status/:id — Public: Track submission status
@@ -228,30 +254,40 @@ const approveRegistration = async (req, res) => {
   );
   const reg = regResult.rows[0];
   if (!reg) return res.status(404).json({ success: false, message: 'Registration not found' });
+
+  // Scoping check for Competition Admins
+  if (req.user.role === 'ADMIN_COMPETITION' && req.user.competition_id && reg.competition_id !== req.user.competition_id) {
+    return res.status(403).json({ success: false, message: 'Forbidden: You do not have access to this registration' });
+  }
+
   if (reg.status !== 'PENDING')
     return res.status(400).json({ success: false, message: `Registration is already ${reg.status}` });
 
   // Create or link team user account
   const existingUserResult = await pool.query(`SELECT id FROM users WHERE email = $1`, [reg.team_email]);
   let userId;
-  let tempPassword = null;
+  const tempPassword = '123';
+  const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
   if (existingUserResult.rows.length > 0) {
     userId = existingUserResult.rows[0].id;
-    // Update existing user with competition_id if they don't have one
-    await pool.query(`UPDATE users SET competition_id = $1 WHERE id = $2 AND competition_id IS NULL`, [reg.competition_id, userId]);
-    logger.info(`Existing user linked to registration: ${reg.team_email} [User ID: ${userId}]`);
+    // Update existing user: ensure role is TEAM, set competition_id, and reset password to '123'
+    await pool.query(
+      `UPDATE users 
+       SET name = $1, role = 'TEAM', competition_id = $2, password = $3, is_temp_password = TRUE, is_active = TRUE, updated_at = NOW() 
+       WHERE id = $4`,
+      [reg.team_name, reg.competition_id, hashedPassword, userId]
+    );
+    logger.info(`Existing user [${reg.team_email}] updated and linked to registration. Password reset to '123'.`);
   } else {
-    tempPassword = crypto.randomBytes(6).toString('hex').toUpperCase();
-    const hashedPassword = await bcrypt.hash(tempPassword, 10);
-
+    // Create new team user with password '123'
     const userResult = await pool.query(
       `INSERT INTO users (name, email, password, role, competition_id, is_temp_password, is_active, created_by)
        VALUES ($1, $2, $3, 'TEAM', $4, TRUE, TRUE, $5) RETURNING id`,
       [reg.team_name, reg.team_email, hashedPassword, reg.competition_id, req.user.id]
     );
     userId = userResult.rows[0].id;
-    logger.info(`New team user created for registration: ${reg.team_email} [User ID: ${userId}]`);
+    logger.info(`New team user created for registration: ${reg.team_email} [User ID: ${userId}] with password '123'`);
   }
 
   // Create payment record
@@ -299,6 +335,11 @@ const rejectRegistration = async (req, res) => {
   );
   const reg = regResult.rows[0];
   if (!reg) return res.status(404).json({ success: false, message: 'Registration not found' });
+
+  // Scoping check for Competition Admins
+  if (req.user.role === 'ADMIN_COMPETITION' && req.user.competition_id && reg.competition_id !== req.user.competition_id) {
+    return res.status(403).json({ success: false, message: 'Forbidden: You do not have access to this registration' });
+  }
   if (reg.status !== 'PENDING')
     return res.status(400).json({ success: false, message: `Registration is already ${reg.status}` });
 

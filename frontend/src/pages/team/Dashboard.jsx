@@ -129,7 +129,7 @@ export default function TeamDashboard() {
 
   const loadAll = useCallback(async () => {
     try {
-      const [tasksRes, subsRes, teRes, payRes, regRes, insRes] = await Promise.all([
+      const results = await Promise.allSettled([
         taskAPI.getAll({}),
         submissionAPI.getMy(),
         trackEventAPI.getMy(),
@@ -137,32 +137,49 @@ export default function TeamDashboard() {
         registrationAPI.getMy(),
         scrutineeringAPI.getMy(),
       ]);
-      const taskList = tasksRes.data.tasks || [];
-      setTasks(taskList);
-      const subsMap = {};
-      (subsRes.data.submissions || []).forEach(s => { subsMap[s.task_id] = s; });
-      setSubmissions(subsMap);
-      const teMap = {};
-      (teRes.data.track_events || []).forEach(te => { teMap[te.task_id] = te; });
-      setTrackEvents(teMap);
-      setPayment(payRes.data.payment);
-      const reg = regRes.data.registration || { 
-        team_name: user.name, 
-        competition_id: user.competition_id,
+
+      const [tasksRes, subsRes, teRes, payRes, regRes, insRes] = results.map(r => r.status === 'fulfilled' ? r.value : null);
+
+      if (tasksRes) setTasks(tasksRes.data.tasks || []);
+      
+      if (subsRes) {
+        const subsMap = {};
+        (subsRes.data.submissions || []).forEach(s => { subsMap[s.task_id] = s; });
+        setSubmissions(subsMap);
+      }
+
+      if (teRes) {
+        const teMap = {};
+        (teRes.data.track_events || []).forEach(te => { teMap[te.task_id] = te; });
+        setTrackEvents(teMap);
+      }
+
+      if (payRes) setPayment(payRes.data.payment);
+
+      const reg = (regRes && regRes.data.registration) || { 
+        team_name: user?.name || 'My Team', 
+        competition_id: user?.competition_id,
         status: 'APPROVED' // Fallback for manually created users
       };
       setRegistration(reg);
-      setInspection(insRes.data.inspection);
+
+      if (insRes) setInspection(insRes.data.inspection);
       
       // Load rank if competition exists
       if (reg?.competition_id) {
-        const rankRes = await leaderboardAPI.getMyPosition(reg.competition_id);
-        if (rankRes.data.success) setRank(rankRes.data.rank);
+        try {
+          const rankRes = await leaderboardAPI.getMyPosition(reg.competition_id);
+          if (rankRes.data.success) setRank(rankRes.data.rank);
+        } catch (e) {
+          console.warn('Leaderboard rank unavailable for this user');
+          setRank(null);
+        }
       }
     } catch (e) {
-      toast.error('Failed to load dashboard');
+      console.error('Critical failure in dashboard load', e);
+      toast.error('Partial failure loading dashboard data');
     } finally { setLoading(false); }
-  }, []);
+  }, [user]);
 
   const handlePayment = async () => {
     toast.info('Contact Finance Admin to process your payment. Payment status will be updated in the dashboard.');

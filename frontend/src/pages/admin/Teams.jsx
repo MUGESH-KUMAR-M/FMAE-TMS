@@ -113,7 +113,7 @@ export default function AdminTeams() {
           search: filter.search || undefined,
           competition_id: isSuper ? (filter.competition_id || undefined) : fixedCompetitionId,
         }),
-        competitionAPI.getAllAdmin(),
+        isSuper ? competitionAPI.getAllAdmin() : competitionAPI.getAll('ACTIVE'),
       ]);
       setTeams(usersRes.data.users || []);
       setTotal(usersRes.data.total || 0);

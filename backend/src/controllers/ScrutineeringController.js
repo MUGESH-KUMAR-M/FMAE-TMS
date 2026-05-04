@@ -9,7 +9,13 @@ const getAllInspections = async (req, res) => {
   let params = [];
   let idx = 1;
 
-  if (competition_id) { conditions.push(`r.competition_id = $${idx++}`); params.push(competition_id); }
+  if (req.user.role !== 'SUPER_ADMIN' && req.user.competition_id) {
+    conditions.push(`r.competition_id = $${idx++}`);
+    params.push(req.user.competition_id);
+  } else if (competition_id) {
+    conditions.push(`r.competition_id = $${idx++}`);
+    params.push(competition_id);
+  }
   if (status) { conditions.push(`ti.status = $${idx++}`); params.push(status); }
 
   const result = await pool.query(
@@ -35,8 +41,14 @@ const updateInspection = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Status must be PENDING, PASS, or FAIL' });
 
   // Check if team exists
-  const reg = await pool.query(`SELECT team_user_id FROM registrations WHERE id = $1`, [registration_id]);
-  if (!reg.rows[0]) return res.status(404).json({ success: false, message: 'Registration not found' });
+  const regResult = await pool.query(`SELECT team_user_id, competition_id FROM registrations WHERE id = $1`, [registration_id]);
+  const reg = regResult.rows[0];
+  if (!reg) return res.status(404).json({ success: false, message: 'Registration not found' });
+
+  // Scoping check for Admins
+  if (req.user.role !== 'SUPER_ADMIN' && req.user.competition_id && reg.competition_id !== req.user.competition_id) {
+    return res.status(403).json({ success: false, message: 'Forbidden: You do not have access to this registration' });
+  }
 
   const result = await pool.query(
     `INSERT INTO technical_inspections (registration_id, team_id, status, notes, marked_by, marked_at)

@@ -95,7 +95,7 @@ export default function SuperUsers() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([userAPI.getAll(filter), competitionAPI.getAll('ACTIVE')])
+    Promise.all([userAPI.getAll(filter), competitionAPI.getAllAdmin()])
       .then(([u, c]) => { setUsers(u.data.users || []); setTotal(u.data.total); setCompetitions(c.data.competitions || []); })
       .finally(() => setLoading(false));
   };

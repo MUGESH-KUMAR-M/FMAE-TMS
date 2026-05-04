@@ -25,7 +25,14 @@ const enterTrackValue = async (req, res) => {
 
   const task = await pool.query(`SELECT * FROM tasks WHERE id = $1`, [taskId]);
   if (!task.rows[0]) return res.status(404).json({ success: false, message: 'Task not found' });
-  if (task.rows[0].task_type !== 'TRACK_EVENT')
+  const taskData = task.rows[0];
+
+  // Scoping check for Competition Admins
+  if (req.user.role === 'ADMIN_COMPETITION' && req.user.competition_id && taskData.competition_id !== req.user.competition_id) {
+    return res.status(403).json({ success: false, message: 'Forbidden: You do not have access to this task' });
+  }
+
+  if (taskData.task_type !== 'TRACK_EVENT')
     return res.status(400).json({ success: false, message: 'This task is not a track event' });
 
   // Upsert track event record (admin can re-enter if not yet approved)
@@ -72,6 +79,14 @@ const enterTrackValue = async (req, res) => {
 
 // GET /api/track-events/tasks/:taskId/teams — Admin: Get all team values for a task
 const getTaskTrackEvents = async (req, res) => {
+  // Scoping check for Competition Admins
+  if (req.user.role === 'ADMIN_COMPETITION' && req.user.competition_id) {
+    const taskCheck = await pool.query(`SELECT competition_id FROM tasks WHERE id = $1`, [req.params.taskId]);
+    if (taskCheck.rows[0] && taskCheck.rows[0].competition_id !== req.user.competition_id) {
+      return res.status(403).json({ success: false, message: 'Forbidden: You do not have access to this task' });
+    }
+  }
+
   const result = await pool.query(
     `SELECT te.*, u.name as team_name, r.college_name, r.vehicle_class
      FROM track_events te
@@ -97,7 +112,10 @@ const getTaskTrackEvents = async (req, res) => {
 // POST /api/track-events/:id/approve — Team: Approve their track event value
 const approveTrackEvent = async (req, res) => {
   const result = await pool.query(
-    `SELECT * FROM track_events WHERE id = $1`, [req.params.id]
+    `SELECT te.*, r.competition_id, r.id as registration_id 
+     FROM track_events te 
+     JOIN registrations r ON r.id = te.registration_id 
+     WHERE te.id = $1`, [req.params.id]
   );
   if (!result.rows[0]) return res.status(404).json({ success: false, message: 'Track event not found' });
   const te = result.rows[0];
@@ -115,7 +133,25 @@ const approveTrackEvent = async (req, res) => {
   );
 
   // Emit socket event for real-time leaderboard update
-  if (req.io) req.io.emit('leaderboard-updated', { competition_id: req.body.competition_id });
+  const io = req.app.get('io');
+  if (io) io.emit('leaderboard-updated', { competition_id: te.competition_id });
+
+  // Notify Admins
+  const adminsToNotify = await pool.query(
+    `SELECT id FROM users 
+     WHERE role = 'SUPER_ADMIN' 
+     OR (role = 'ADMIN_COMPETITION' AND competition_id = (SELECT competition_id FROM tasks WHERE id = $1))`,
+    [te.task_id]
+  );
+  for (const admin of adminsToNotify.rows) {
+    await NotificationController.createNotification(io, {
+      user_id: admin.id,
+      title: 'Track Value Approved',
+      message: `Team "${req.user.name}" has approved their value for task ID ${te.task_id}.`,
+      type: 'SUCCESS',
+      link: `/admin/registrations/${te.registration_id}`
+    });
+  }
 
   logger.info(`Track event approved: Team ${req.user.id}, task ${te.task_id}`);
   res.json({ success: true, message: 'Value approved. Score added to leaderboard.' });
@@ -172,9 +208,19 @@ const getApprovedValues = async (req, res) => {
 
 // DELETE /api/track-events/:id — Admin: Delete track event entry
 const deleteTrackEvent = async (req, res) => {
-  const existing = await pool.query(`SELECT * FROM track_events WHERE id = $1`, [req.params.id]);
+  const existing = await pool.query(
+    `SELECT te.*, t.competition_id 
+     FROM track_events te JOIN tasks t ON t.id = te.task_id 
+     WHERE te.id = $1`, 
+    [req.params.id]
+  );
   if (!existing.rows[0]) return res.status(404).json({ success: false, message: 'Track event not found' });
   
+  // Scoping check for Competition Admins
+  if (req.user.role === 'ADMIN_COMPETITION' && req.user.competition_id && existing.rows[0].competition_id !== req.user.competition_id) {
+    return res.status(403).json({ success: false, message: 'Forbidden: You do not have access to this track event entry' });
+  }
+
   if (existing.rows[0].approved)
     return res.status(400).json({ success: false, message: 'Cannot delete approved track event value' });
 

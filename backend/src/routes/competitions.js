@@ -8,7 +8,7 @@ const {
   getAllCompetitionsAdmin,
   deleteCompetition
 } = require('../controllers/CompetitionController');
-const { authMiddleware, isCompAdmin, isSuperAdmin } = require('../middleware/auth');
+const { authMiddleware, optionalAuth, isCompAdmin, isSuperAdmin, isAnyRole } = require('../middleware/auth');
 
 /**
  * @swagger
@@ -27,7 +27,7 @@ const { authMiddleware, isCompAdmin, isSuperAdmin } = require('../middleware/aut
  *       200:
  *         description: List of active competitions
  */
-router.get('/', getCompetitions);
+router.get('/', optionalAuth, getCompetitions);
 
 /**
  * @swagger
@@ -40,7 +40,7 @@ router.get('/', getCompetitions);
  *       200:
  *         description: List of all competitions
  */
-router.get('/admin/all', authMiddleware, isSuperAdmin, getAllCompetitionsAdmin);
+router.get('/admin/all', authMiddleware, isAnyRole, getAllCompetitionsAdmin);
 
 /**
  * @swagger

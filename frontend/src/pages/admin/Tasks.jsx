@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
 import { taskAPI, competitionAPI, trackEventAPI, submissionAPI } from '../../services/api';
 import { ArrowRight } from 'lucide-react';
+import { useAuthStore } from '../../context/store';
 
 const FILE_TYPES = ['PDF', 'PPT', 'PPTX', 'PNG', 'JPG', 'MP4', 'ZIP', 'DOCX', 'DOC'];
 
@@ -116,6 +117,7 @@ function CreateTaskModal({ competitions, onClose, onCreated }) {
 }
 
 export default function AdminTasks() {
+  const { user } = useAuthStore();
   const [tasks, setTasks] = useState([]);
   const [competitions, setCompetitions] = useState([]);
   const [filter, setFilter] = useState({ competition_id: '', status: '' });
@@ -125,7 +127,11 @@ export default function AdminTasks() {
 
   const load = () => {
     setLoading(true);
-    const p = [taskAPI.getAll(filter), competitionAPI.getAll('ACTIVE')];
+    const isSuper = user?.role === 'SUPER_ADMIN';
+    const p = [
+      taskAPI.getAll(filter),
+      isSuper ? competitionAPI.getAllAdmin() : competitionAPI.getAll('ACTIVE')
+    ];
     if (filter.competition_id) p.push(taskAPI.getWeight(filter.competition_id));
     
     Promise.all(p)

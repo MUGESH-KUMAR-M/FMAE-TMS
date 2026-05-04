@@ -28,7 +28,8 @@ export default function FinanceDashboard() {
   const updateStatus = async (paymentId, status) => {
     setUpdating(paymentId);
     try {
-      await paymentAPI.update(paymentId, { status });
+      const team = payments.find(p => p.payment_id === paymentId);
+      await paymentAPI.update(paymentId, { status, registration_id: team?.registration_id });
       toast.success(`Payment marked as ${status}`);
       load();
     } catch (e) { toast.error(e.response?.data?.message || 'Failed'); }

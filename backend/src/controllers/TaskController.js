@@ -90,6 +90,11 @@ const createTask = async (req, res) => {
   if (!competition_id || !name || !task_type || weight === undefined)
     return res.status(400).json({ success: false, message: 'competition_id, name, task_type, weight are required' });
 
+  // Scoping check for Competition Admins
+  if (req.user.role === 'ADMIN_COMPETITION' && req.user.competition_id && String(competition_id) !== String(req.user.competition_id)) {
+    return res.status(403).json({ success: false, message: 'Forbidden: You can only create tasks for your assigned competition' });
+  }
+
   // PRD rule: publishing is allowed only when total published weight is exactly 100%
   if (status === 'PUBLISHED') {
     const publishCheck = await ensurePublishWeightExactly100(competition_id, weight);
@@ -141,6 +146,11 @@ const updateTask = async (req, res) => {
   const existing = await pool.query(`SELECT * FROM tasks WHERE id = $1`, [taskId]);
   if (!existing.rows[0]) return res.status(404).json({ success: false, message: 'Task not found' });
   const existingTask = existing.rows[0];
+
+  // Scoping check for Competition Admins
+  if (req.user.role === 'ADMIN_COMPETITION' && req.user.competition_id && existingTask.competition_id !== req.user.competition_id) {
+    return res.status(403).json({ success: false, message: 'Forbidden: You do not have access to this task' });
+  }
 
   const nextStatus = status || existingTask.status;
   const nextWeight = weight !== undefined && weight !== null ? weight : existingTask.weight;
@@ -200,14 +210,23 @@ const updateTask = async (req, res) => {
 // GET /api/tasks/:id/submissions — Admin: View all team submissions for a task
 const getTaskSubmissions = async (req, res) => {
   const result = await pool.query(
-    `SELECT s.*, u.name as team_name, r.college_name, r.vehicle_class
+    `SELECT s.*, u.name as team_name, r.college_name, r.vehicle_class, t.competition_id
      FROM submissions s
      JOIN users u ON u.id = s.team_id
      JOIN registrations r ON r.team_user_id = u.id
+     JOIN tasks t ON t.id = s.task_id
      WHERE s.task_id = $1
      ORDER BY s.submitted_at DESC`,
     [req.params.id]
   );
+  
+  if (result.rows.length > 0) {
+    const competitionId = result.rows[0].competition_id;
+    if (req.user.role === 'ADMIN_COMPETITION' && req.user.competition_id && competitionId !== req.user.competition_id) {
+      return res.status(403).json({ success: false, message: 'Forbidden: You do not have access to these submissions' });
+    }
+  }
+
   res.json({ success: true, submissions: result.rows });
 };
 
@@ -225,8 +244,15 @@ const getWeightStatus = async (req, res) => {
 
 // DELETE /api/tasks/:id — Admin: Delete task
 const deleteTask = async (req, res) => {
+  const existing = await pool.query('SELECT * FROM tasks WHERE id = $1', [req.params.id]);
+  if (!existing.rows[0]) return res.status(404).json({ success: false, message: 'Task not found' });
+  
+  // Scoping check for Competition Admins
+  if (req.user.role === 'ADMIN_COMPETITION' && req.user.competition_id && existing.rows[0].competition_id !== req.user.competition_id) {
+    return res.status(403).json({ success: false, message: 'Forbidden: You do not have access to this task' });
+  }
+
   const result = await pool.query('DELETE FROM tasks WHERE id = $1 RETURNING *', [req.params.id]);
-  if (!result.rows[0]) return res.status(404).json({ success: false, message: 'Task not found' });
   logger.info(`Task deleted: ${result.rows[0].name} by ${req.user.email}`);
   res.json({ success: true, message: 'Task deleted' });
 };

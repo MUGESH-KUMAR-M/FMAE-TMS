@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { enterTrackValue, getTaskTrackEvents, approveTrackEvent, getMyTrackEvents, getApprovedValues, deleteTrackEvent } = require('../controllers/TrackEventController');
-const { authMiddleware, isCompAdmin, isTeam, isJudge } = require('../middleware/auth');
+const { authMiddleware, isCompAdmin, isTeam, isJudge, isAnyRole } = require('../middleware/auth');
 
 // Attach io to req for socket emit on approve
 router.use((req, res, next) => {
@@ -45,7 +45,7 @@ router.get('/tasks/:taskId/teams', authMiddleware, isCompAdmin, getTaskTrackEven
  *     security: [{ bearerAuth: [] }]
  */
 router.get('/my', authMiddleware, isTeam, getMyTrackEvents);
-router.get('/approved-values', authMiddleware, isJudge, getApprovedValues);
+router.get('/approved-values', authMiddleware, isAnyRole, getApprovedValues);
 
 /**
  * @swagger

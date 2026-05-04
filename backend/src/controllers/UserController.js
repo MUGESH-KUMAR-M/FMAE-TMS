@@ -29,7 +29,7 @@ const getAllUsers = async (req, res) => {
 
   if (isCompAdminOnly(req)) {
     if (!req.user?.competition_id) {
-      return res.status(403).json({ success: false, message: 'Competition Admin is not assigned to any competition' });
+      return res.json({ success: true, users: [], total: 0, page: parseInt(page), limit: parseInt(limit) });
     }
     conditions.push(`u.role = $${idx++}`);
     params.push('TEAM');

@@ -1,62 +1,73 @@
-version: '3.8'
+name: fmae-tms-production
 
 services:
-  # PostgreSQL Database
-  postgres:
+  # Database Service
+  db:
     image: postgres:15-alpine
-    container_name: fmae_tms_db
+    container_name: fmae-tms-db-prod
+    restart: always
     environment:
       POSTGRES_DB: fmae_tms_db
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: Admin@FMAE2026
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - fmae_postgres_data_prod:/var/lib/postgresql/data
     networks:
       - fmae-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d fmae_tms_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # Backend API Server
+  # Backend Service
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: fmae_tms_backend
+    container_name: fmae-tms-backend-prod
+    restart: always
+    env_file:
+      - ./backend/.env.docker
     environment:
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_NAME: fmae_tms_db
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      PORT: 5000
-      NODE_ENV: production
-      JWT_SECRET: your_jwt_secret_key_here
-    ports:
-      - "5000:5000"
+      - NODE_ENV=production
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=fmae_tms_db
+      - DB_USER=postgres
+      - DB_PASSWORD=Admin@FMAE2026
+      - FRONTEND_URL=http://localhost:80
+      - SOCKET_CORS=http://localhost:80
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
     depends_on:
-      - postgres
+      db:
+        condition: service_healthy
     networks:
       - fmae-network
+    ports:
+      - "5000:5000"
 
-  # Frontend React App
+  # Frontend Service
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: fmae_tms_frontend
-    environment:
-      VITE_API_URL: http://backend:5000/api
-      VITE_SOCKET_URL: http://backend:5000
+      args:
+        - VITE_API_URL=http://localhost:5000/api
+    container_name: fmae-tms-frontend-prod
+    restart: always
     ports:
-      - "3000:3000"
-    depends_on:
-      - backend
+      - "80:80"
     networks:
       - fmae-network
-
-volumes:
-  postgres_data:
+    depends_on:
+      - backend
 
 networks:
   fmae-network:
     driver: bridge
+
+volumes:
+  fmae_postgres_data_prod:

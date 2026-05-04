@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import './Layout.css';
 import { notificationAPI } from '../services/api';
-import { joinUser, onNotification } from '../services/socket';
+import { joinUser, onNotification, disconnectSocket } from '../services/socket';
 import { formatDistanceToNow } from 'date-fns';
 import toast from 'react-hot-toast';
 
@@ -16,11 +16,12 @@ const NAV_CONFIGS = {
   SUPER_ADMIN: [
     { label: 'PLATFORM', items: [
       { to: '/superadmin', label: 'Overview', icon: <LayoutDashboard size={18} /> },
-      { to: '/superadmin/users', label: 'Team Accounts', icon: <Users size={18} /> },
+      { to: '/superadmin/users', label: 'System Users', icon: <Shield size={18} /> },
+      { to: '/admin/teams', label: 'Team Accounts', icon: <Users size={18} /> },
       { to: '/finance', label: 'Financial Records', icon: <CreditCard size={18} /> },
     ]},
     { label: 'EVENTS', items: [
-      { to: '/superadmin/competitions', label: 'Competition Hub', icon: <Trophy size={18} /> },
+      { to: '/superadmin/competitions', label: 'Event Settings', icon: <Trophy size={18} /> },
       { to: '/admin/registrations', label: 'Team Rosters', icon: <ClipboardList size={18} /> },
       { to: '/admin/tasks', label: 'Requirement List', icon: <CheckSquare size={18} /> },
     ]}
@@ -31,7 +32,7 @@ const NAV_CONFIGS = {
       { to: '/admin/registrations', label: 'Team Rosters', icon: <ClipboardList size={18} /> },
     ]},
     { label: 'TRACKING', items: [
-      { to: '/admin/competitions', label: 'Events List', icon: <Trophy size={18} /> },
+      { to: '/admin/competitions', label: 'Event Settings', icon: <Trophy size={18} /> },
       { to: '/admin/tasks', label: 'Requirement List', icon: <CheckSquare size={18} /> },
       { to: '/admin/teams', label: 'Team Accounts', icon: <Users size={18} /> },
       { to: '/judge', label: 'Event Standings', icon: <Medal size={18} /> },
@@ -74,7 +75,12 @@ export default function Layout({ children }) {
   const menuRef = useRef(null);
   const notifRef = useRef(null);
 
-  const handleLogout = () => { logout(); navigate('/login'); };
+  const handleLogout = () => { 
+    setShowProfileMenu(false);
+    disconnectSocket();
+    logout(); 
+    navigate('/login'); 
+  };
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -182,18 +188,15 @@ export default function Layout({ children }) {
       {/* Glass Top Navbar (Landing-style centered container) */}
       <nav className="top-navbar-shell">
         <div className="top-navbar-inner">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div className="navbar-shimmer-wrapper" />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, position: 'relative', zIndex: 1 }}>
             <div className="search-container">
               <Search size={18} color="rgba(0,0,0,0.5)" />
               <input className="search-input" type="text" placeholder="Global search..." />
             </div>
-            <div className="top-title-chip">
-              <span className="top-title-dot" />
-              <span>{currentTitle}</span>
-            </div>
           </div>
         
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 24, position: 'relative', zIndex: 1 }}>
           <div style={{ position: 'relative' }} ref={notifRef}>
             <button 
               onClick={() => setShowNotifications(!showNotifications)}

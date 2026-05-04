@@ -164,7 +164,7 @@ export default function App() {
 
           {/* ── Judge Portal ─────────────────────────────────── */}
           <Route path="/judge" element={
-            <ProtectedRoute roles={['JUDGE', 'SUPER_ADMIN']}>
+            <ProtectedRoute roles={['JUDGE', 'SUPER_ADMIN', 'ADMIN_COMPETITION']}>
               <Layout><JudgeDashboard /></Layout>
             </ProtectedRoute>
           } />

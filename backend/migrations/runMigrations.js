@@ -185,8 +185,7 @@ const migrations = [
   );`,
 
   // ─── 9. AUDIT LOG ───────────────────────────────────────────────────────────
-  // Gap Fix: Super Admin needs audit log — who did what and when
-  `CREATE TABLE IF NOT EXISTS audit_log (
+  `CREATE TABLE IF NOT EXISTS audit_logs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     action VARCHAR(100) NOT NULL,
@@ -195,7 +194,33 @@ const migrations = [
     old_value JSONB,
     new_value JSONB,
     ip_address VARCHAR(50),
+    user_agent TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );`,
+
+  // ─── 10. NOTIFICATIONS ──────────────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS notifications (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    message TEXT NOT NULL,
+    type VARCHAR(50) DEFAULT 'INFO',
+    link VARCHAR(255),
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );`,
+
+  // ─── 11. TECHNICAL INSPECTIONS ──────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS technical_inspections (
+    id SERIAL PRIMARY KEY,
+    registration_id INTEGER NOT NULL UNIQUE REFERENCES registrations(id) ON DELETE CASCADE,
+    team_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status VARCHAR(20) DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PASS', 'FAIL')),
+    notes TEXT,
+    marked_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    marked_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );`,
 
   // ─── INDEXES ────────────────────────────────────────────────────────────────
@@ -215,9 +240,11 @@ const migrations = [
   `CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id);`,
 
   // ─── FK CONSTRAINTS (after table creation) ──────────────────────────────────
-  `ALTER TABLE users ADD CONSTRAINT IF NOT EXISTS fk_user_competition 
+  `ALTER TABLE users DROP CONSTRAINT IF EXISTS fk_user_competition;`,
+  `ALTER TABLE users ADD CONSTRAINT fk_user_competition 
     FOREIGN KEY (competition_id) REFERENCES competitions(id) ON DELETE SET NULL;`,
-  `ALTER TABLE users ADD CONSTRAINT IF NOT EXISTS fk_user_created_by
+  `ALTER TABLE users DROP CONSTRAINT IF EXISTS fk_user_created_by;`,
+  `ALTER TABLE users ADD CONSTRAINT fk_user_created_by
     FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL;`,
 ];
 

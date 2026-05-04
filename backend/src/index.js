@@ -32,6 +32,7 @@ const { csrfProtection, getCsrfToken, cookieParser: csrfCookieParser } = require
 const { sanitizeInput } = require('./utils/sanitize');
 
 const app = express();
+app.set('trust proxy', 1); // Trust Nginx proxy
 const server = http.createServer(app);
 
 // ─── Socket.io (real-time leaderboard updates) ────────────────────────────────
@@ -59,8 +60,10 @@ io.on('connection', (socket) => {
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 const ALLOWED_ORIGINS = [
   process.env.FRONTEND_URL || 'http://localhost:3000',
+  'http://localhost',
   'http://localhost:3000',
   'http://localhost:3001',
+  'http://localhost:80',
 ];
 app.use(cors({
   origin: (origin, cb) => {

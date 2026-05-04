@@ -4,17 +4,25 @@ const logger = require('../utils/logger');
 // GET /api/competitions — All active competitions (public for registration dropdown)
 const getCompetitions = async (req, res) => {
   const statusFilter = req.query.status || 'ACTIVE';
-  const result = await pool.query(
-    `SELECT c.*, 
-            json_agg(json_build_object('id',d.id,'label',d.label,'date',d.deadline_date) 
-                     ORDER BY d.deadline_date) FILTER (WHERE d.id IS NOT NULL) as deadlines
-     FROM competitions c
-     LEFT JOIN competition_deadlines d ON d.competition_id = c.id
-     WHERE c.status = $1
-     GROUP BY c.id
-     ORDER BY c.code`,
-    [statusFilter]
-  );
+  let query = `
+    SELECT c.*, 
+           json_agg(json_build_object('id',d.id,'label',d.label,'date',d.deadline_date) 
+                    ORDER BY d.deadline_date) FILTER (WHERE d.id IS NOT NULL) as deadlines
+    FROM competitions c
+    LEFT JOIN competition_deadlines d ON d.competition_id = c.id
+    WHERE c.status = $1
+  `;
+  let params = [statusFilter];
+
+  // Scoping for Competition Admins
+  if (req.user && req.user.role === 'ADMIN_COMPETITION' && req.user.competition_id) {
+    query += ` AND c.id = $2`;
+    params.push(req.user.competition_id);
+  }
+
+  query += ` GROUP BY c.id ORDER BY c.code`;
+  
+  const result = await pool.query(query, params);
   res.json({ success: true, competitions: result.rows });
 };
 
@@ -63,6 +71,12 @@ const createCompetition = async (req, res) => {
 // PUT /api/competitions/:id — Admin: Update competition
 const updateCompetition = async (req, res) => {
   const { name, vehicle_class, description, rules, start_date, end_date, status, deadlines } = req.body;
+  
+  // Scoping check
+  if (req.user.role === 'ADMIN_COMPETITION' && Number(req.params.id) !== Number(req.user.competition_id)) {
+    return res.status(403).json({ success: false, message: 'Forbidden: You can only update your assigned competition' });
+  }
+
   const result = await pool.query(
     `UPDATE competitions SET name=COALESCE($1,name), vehicle_class=COALESCE($2,vehicle_class),
      description=COALESCE($3,description), rules=COALESCE($4,rules),
@@ -101,6 +115,12 @@ const getAllCompetitionsAdmin = async (req, res) => {
 
 // DELETE /api/competitions/:id — Admin: Delete competition
 const deleteCompetition = async (req, res) => {
+  // Only Super Admin can delete? (Currently router says isSuperAdmin)
+  // But let's add safeguard here too.
+  if (req.user.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ success: false, message: 'Forbidden: Only Super Admin can delete competitions' });
+  }
+
   const result = await pool.query('DELETE FROM competitions WHERE id = $1 RETURNING *', [req.params.id]);
   if (!result.rows[0]) return res.status(404).json({ success: false, message: 'Competition not found' });
   logger.info(`Competition deleted: ${result.rows[0].code} by ${req.user.email}`);

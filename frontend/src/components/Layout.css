@@ -139,11 +139,20 @@ body {
   background: rgba(255,255,255,0.86);
   backdrop-filter: blur(18px);
   box-shadow: 0 14px 30px rgba(0,0,0,0.08);
-  overflow: hidden;
+  position: relative;
+  /* overflow: hidden; -- Removed to allow dropdowns */
   pointer-events: auto;
 }
 
-.top-navbar-inner::before {
+.navbar-shimmer-wrapper {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.navbar-shimmer-wrapper::before {
   content: '';
   position: absolute;
   left: -20%;
